@@ -6,7 +6,11 @@ import android.database.DatabaseUtils;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Point;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.nfc.Tag;
+import android.opengl.Matrix;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.support.design.widget.FloatingActionButton;
@@ -16,11 +20,13 @@ import android.support.v7.widget.Toolbar;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -32,6 +38,8 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
@@ -40,6 +48,8 @@ import org.opencv.imgproc.Imgproc;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -50,7 +60,10 @@ public class MainActivity extends AppCompatActivity {
     ImageView targetImage;
     Mat matTargetImage;
     List<MatOfPoint> contours;
+//    List<MatOfPoint> result;
+    List<Boolean> isMarked;
     Mat hierarchy;
+    int x,y;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -90,7 +103,7 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(getApplicationContext(),
                     "ImageView: " + targetImage.getWidth() + " x " + targetImage.getHeight(),
                     Toast.LENGTH_LONG).show();
-
+            Log.d(TAG, "ImageView: " + targetImage.getWidth() + " x " + targetImage.getHeight());
             Bitmap bitmap;
             bitmap = decodeSampledBitmapFromUri(
                     uri,
@@ -109,17 +122,21 @@ public class MainActivity extends AppCompatActivity {
             matTargetImage = new Mat (bitmap.getWidth(), bitmap.getHeight(), CvType.CV_8UC1);
             Utils.bitmapToMat(bitmap, matTargetImage);
             Imgproc.cvtColor(matTargetImage, matTargetImage, Imgproc.COLOR_RGB2GRAY);
-//            Imgproc.threshold(matTargetImage, matTargetImage, 100, 255, Imgproc.THRESH_BINARY);
-            Imgproc.adaptiveThreshold(matTargetImage, matTargetImage, 255, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY, 11, 2);
-            Imgproc.erode(matTargetImage, matTargetImage, new Mat());
+            Imgproc.threshold(matTargetImage, matTargetImage, 128, 255, Imgproc.THRESH_BINARY);
+//            Imgproc.adaptiveThreshold(matTargetImage, matTargetImage, 255, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY, 11, 2);
+//            Imgproc.erode(matTargetImage, matTargetImage, new Mat());
 //            matTargetImage =
             contours = new ArrayList<MatOfPoint>();
             hierarchy = new Mat();
             Imgproc.findContours(matTargetImage, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_SIMPLE);
             Imgproc.cvtColor(matTargetImage, matTargetImage, Imgproc.COLOR_GRAY2BGR);
-
+            Collections.sort(contours, new CustomComparator());
+            isMarked = new ArrayList<>();
             for(int contouridx = 0; contouridx < contours.size(); contouridx++) {
-                if(contours.get(contouridx).size().area() > 10) {
+                isMarked.add(false);
+            }
+            for(int contouridx = 0; contouridx < contours.size(); contouridx++) {
+                if(contours.get(contouridx).size().area() > 5) {
                     Imgproc.drawContours(matTargetImage, contours, contouridx, new Scalar(255, 0, 0), 2);
                 }
             }
@@ -131,6 +148,103 @@ public class MainActivity extends AppCompatActivity {
             Bitmap trial = Bitmap.createBitmap(matTargetImage.cols(), matTargetImage.rows(),Bitmap.Config.ARGB_8888);
             Utils.matToBitmap(matTargetImage, trial);
             targetImage.setImageBitmap(trial);
+
+            /*int idx = 0;
+            while(idx<contours.size()) {
+                result = Imgproc.approxPolyDP();
+            }*/
+
+            targetImage.setOnTouchListener(new View.OnTouchListener() {
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                        float eventX = event.getX();
+                        float eventY = event.getY();
+                        float[] eventXY = new float[]{eventX, eventY};
+//                        Log.d(TAG, "" + eventX + " " + eventY + " " + eventXY.toString());
+                        android.graphics.Matrix invertMatrix = new android.graphics.Matrix();
+                        ((ImageView) targetImage).getImageMatrix().invert(invertMatrix);
+                        //
+                        invertMatrix.mapPoints(eventXY);
+
+                        int x = Integer.valueOf((int) eventXY[0]);
+                        int y = Integer.valueOf((int) eventXY[1]);
+//                        Log.d(TAG, "" + x + " " + y);
+
+                        Log.d(TAG, "touched position: "
+                                + String.valueOf(eventX) + " / "
+                                + String.valueOf(eventY));
+                        Log.d(TAG, "touched position: "
+                                + String.valueOf(x) + " / "
+                                + String.valueOf(y));
+
+                        Drawable imgDrawable = ((ImageView) targetImage).getDrawable();
+                        Bitmap bitmap = ((BitmapDrawable) imgDrawable).getBitmap();
+                        Log.d(TAG,
+                                "drawable size: "
+                                        + String.valueOf(bitmap.getWidth()) + " / "
+                                        + String.valueOf(bitmap.getHeight()));
+                        //Limit x, y range within bitmap
+                        if (x < 0) {
+                            x = 0;
+                        } else if (x > bitmap.getWidth() - 1) {
+                            x = bitmap.getWidth() - 1;
+                        }
+
+                        if (y < 0) {
+                            y = 0;
+                        } else if (y > bitmap.getHeight() - 1) {
+                            y = bitmap.getHeight() - 1;
+                        }
+                        org.opencv.core.Point p = new org.opencv.core.Point(x, y);
+                        for (int contouridx = 0; contouridx < contours.size(); contouridx++) {
+                            if (isMarked.get(contouridx) == false) {
+                                MatOfPoint2f m = new MatOfPoint2f(contours.get(contouridx).toArray());
+                                double r = Imgproc.pointPolygonTest(m, p, false);
+                                if (r == 1) {
+                                    Imgproc.drawContours(matTargetImage, contours, contouridx, new Scalar(0, 255, 0), 2);
+                                    isMarked.set(contouridx, true);
+                                    break;
+                                }
+                            }
+                        }
+                        Bitmap trial = Bitmap.createBitmap(matTargetImage.cols(), matTargetImage.rows(), Bitmap.Config.ARGB_8888);
+                        Utils.matToBitmap(matTargetImage, trial);
+                        targetImage.setImageBitmap(trial);
+                    }
+                    return true;
+                }
+
+//                    int startX = 0, startY = 0;
+            });
+        }
+    }
+
+    public class CustomComparator implements Comparator<MatOfPoint> {
+//        @Override
+//        public int compareTo(MatOfPoint o) {
+//            Rect ra = Imgproc.boundingRect(this);
+//            Rect rb = Imgproc.boundingRect(o2);
+//            return 0;
+//        }
+
+        @Override
+        public int compare(MatOfPoint o1, MatOfPoint o2) {
+            Rect ra = Imgproc.boundingRect(o1);
+            Rect rb = Imgproc.boundingRect(o2);
+            if(ra.area()>rb.area()) {
+                return 1;
+            } else if(ra.area()< rb.area()) {
+                return -1;
+            } else {
+                if(ra.x > rb.x) {
+                    return 1;
+                } else if(ra.x < rb.x) {
+                    return -1;
+                } else {
+                    return 0;
+                }
+            }
         }
     }
 
