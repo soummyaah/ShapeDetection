@@ -60,7 +60,6 @@ public class MainActivity extends AppCompatActivity {
     ImageView targetImage;
     Mat matTargetImage;
     List<MatOfPoint> contours;
-//    List<MatOfPoint> result;
     List<Boolean> isMarked;
     Mat hierarchy;
     int x,y;
@@ -78,15 +77,10 @@ public class MainActivity extends AppCompatActivity {
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-//                Intent intent = new Intent(Intent.ACTION_PICK,
-//                        android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-//                startActivityForResult(intent, 0);
                 Intent intent = new Intent();
                 intent.setType("image/*");
                 intent.setAction(Intent.ACTION_GET_CONTENT);
                 startActivityForResult(Intent.createChooser(intent, "Select Picture"), PICK_IMAGE_REQUEST);
-//                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-//                        .setAction("Action", null).show();
             }
         });
     }
@@ -122,10 +116,10 @@ public class MainActivity extends AppCompatActivity {
             matTargetImage = new Mat (bitmap.getWidth(), bitmap.getHeight(), CvType.CV_8UC1);
             Utils.bitmapToMat(bitmap, matTargetImage);
             Imgproc.cvtColor(matTargetImage, matTargetImage, Imgproc.COLOR_RGB2GRAY);
-            Imgproc.threshold(matTargetImage, matTargetImage, 128, 255, Imgproc.THRESH_BINARY);
-//            Imgproc.adaptiveThreshold(matTargetImage, matTargetImage, 255, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY, 11, 2);
-//            Imgproc.erode(matTargetImage, matTargetImage, new Mat());
-//            matTargetImage =
+//            Imgproc.threshold(matTargetImage, matTargetImage, 128, 255, Imgproc.THRESH_BINARY);
+            Imgproc.adaptiveThreshold(matTargetImage, matTargetImage, 255, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY, 11, 2);
+            Imgproc.erode(matTargetImage, matTargetImage, new Mat());
+//            Imgproc.dilate(matTargetImage, matTargetImage, new Mat());
             contours = new ArrayList<MatOfPoint>();
             hierarchy = new Mat();
             Imgproc.findContours(matTargetImage, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_SIMPLE);
@@ -141,7 +135,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-//            Imgproc.drawContours(matTargetImage, contours, -1, new Scalar(255, 0, 0), 1, 8, hierarchy, 5, new org.opencv.core.Point());//, 2, 8, hierarchy, 0, new Point());
             hierarchy.release();
             Log.d(TAG, " " + contours.size());
             Log.d(TAG, contours.toString());
@@ -149,27 +142,21 @@ public class MainActivity extends AppCompatActivity {
             Utils.matToBitmap(matTargetImage, trial);
             targetImage.setImageBitmap(trial);
 
-            /*int idx = 0;
-            while(idx<contours.size()) {
-                result = Imgproc.approxPolyDP();
-            }*/
-
             targetImage.setOnTouchListener(new View.OnTouchListener() {
                 @Override
                 public boolean onTouch(View v, MotionEvent event) {
                     if (event.getAction() == MotionEvent.ACTION_DOWN) {
+
+                        // Get touched location according to image.
                         float eventX = event.getX();
                         float eventY = event.getY();
                         float[] eventXY = new float[]{eventX, eventY};
-//                        Log.d(TAG, "" + eventX + " " + eventY + " " + eventXY.toString());
                         android.graphics.Matrix invertMatrix = new android.graphics.Matrix();
                         ((ImageView) targetImage).getImageMatrix().invert(invertMatrix);
-                        //
                         invertMatrix.mapPoints(eventXY);
 
                         int x = Integer.valueOf((int) eventXY[0]);
                         int y = Integer.valueOf((int) eventXY[1]);
-//                        Log.d(TAG, "" + x + " " + y);
 
                         Log.d(TAG, "touched position: "
                                 + String.valueOf(eventX) + " / "
@@ -196,6 +183,7 @@ public class MainActivity extends AppCompatActivity {
                         } else if (y > bitmap.getHeight() - 1) {
                             y = bitmap.getHeight() - 1;
                         }
+                        // Find minimum contour, color it and mark it.
                         org.opencv.core.Point p = new org.opencv.core.Point(x, y);
                         for (int contouridx = 0; contouridx < contours.size(); contouridx++) {
                             if (isMarked.get(contouridx) == false) {
@@ -221,13 +209,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public class CustomComparator implements Comparator<MatOfPoint> {
-//        @Override
-//        public int compareTo(MatOfPoint o) {
-//            Rect ra = Imgproc.boundingRect(this);
-//            Rect rb = Imgproc.boundingRect(o2);
-//            return 0;
-//        }
-
         @Override
         public int compare(MatOfPoint o1, MatOfPoint o2) {
             Rect ra = Imgproc.boundingRect(o1);
